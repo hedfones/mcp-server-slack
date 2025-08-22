@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/korotovsky/slack-mcp-server/pkg/provider"
 	"github.com/korotovsky/slack-mcp-server/pkg/server"
@@ -19,17 +20,168 @@ import (
 var defaultSseHost = "127.0.0.1"
 var defaultSsePort = 13080
 
+// ServerConfig holds all server configuration from environment variables
+type ServerConfig struct {
+	// Network configuration
+	Host    string
+	Port    string
+	BaseURL string
+	
+	// Railway-specific configuration
+	RailwayEnvironment string
+	RailwayPort        string
+	
+	// Security configuration
+	CORSOrigins       []string
+	RateLimit         time.Duration
+	SecurityHeaders   bool
+	HealthEnabled     bool
+	PrivateNetwork    bool
+	
+	// Logging configuration
+	LogLevel  string
+	LogFormat string
+	LogColor  bool
+}
+
+// loadServerConfig loads and validates server configuration from environment variables
+func loadServerConfig() (*ServerConfig, error) {
+	config := &ServerConfig{}
+	
+	// Railway-specific environment variables (automatically set by Railway)
+	config.RailwayPort = os.Getenv("PORT")
+	config.RailwayEnvironment = os.Getenv("RAILWAY_ENVIRONMENT")
+	
+	// Network configuration
+	config.Host = os.Getenv("SLACK_MCP_HOST")
+	config.Port = os.Getenv("SLACK_MCP_PORT")
+	config.BaseURL = os.Getenv("SLACK_MCP_BASE_URL")
+	
+	// Apply Railway port precedence
+	if config.RailwayPort != "" {
+		config.Port = config.RailwayPort
+	}
+	
+	// Set default port if none specified
+	if config.Port == "" {
+		config.Port = strconv.Itoa(defaultSsePort)
+	}
+	
+	// Handle dual-stack binding for Railway deployment
+	if config.Host == "" {
+		if config.RailwayPort != "" || config.RailwayEnvironment != "" {
+			// Empty host for dual-stack IPv4/IPv6 binding on Railway
+			config.Host = ""
+		} else {
+			// Default to localhost for local development
+			config.Host = defaultSseHost
+		}
+	}
+	
+	// Security configuration with validation
+	corsOriginsStr := os.Getenv("SLACK_MCP_CORS_ORIGINS")
+	if corsOriginsStr == "" {
+		config.CORSOrigins = []string{"*"} // Default to allow all origins
+	} else {
+		config.CORSOrigins = strings.Split(corsOriginsStr, ",")
+		for i, origin := range config.CORSOrigins {
+			config.CORSOrigins[i] = strings.TrimSpace(origin)
+		}
+	}
+	
+	// Rate limiting configuration
+	rateLimitStr := os.Getenv("SLACK_MCP_RATE_LIMIT")
+	if rateLimitStr == "" {
+		config.RateLimit = time.Minute // Default: 60 requests per minute
+	} else {
+		rateLimitInt, err := strconv.Atoi(rateLimitStr)
+		if err != nil || rateLimitInt <= 0 {
+			return nil, fmt.Errorf("invalid SLACK_MCP_RATE_LIMIT value '%s': must be a positive integer", rateLimitStr)
+		}
+		config.RateLimit = time.Minute / time.Duration(rateLimitInt)
+	}
+	
+	// Security headers configuration
+	securityHeadersStr := os.Getenv("SLACK_MCP_SECURITY_HEADERS")
+	config.SecurityHeaders = securityHeadersStr == "" || securityHeadersStr == "true" || securityHeadersStr == "1"
+	
+	// Health check configuration
+	healthEnabledStr := os.Getenv("SLACK_MCP_HEALTH_ENABLED")
+	config.HealthEnabled = healthEnabledStr == "" || healthEnabledStr == "true" || healthEnabledStr == "1"
+	
+	// Private network deployment detection
+	privateNetworkStr := os.Getenv("SLACK_MCP_PRIVATE_NETWORK")
+	config.PrivateNetwork = privateNetworkStr == "true" || privateNetworkStr == "1" || 
+		config.RailwayEnvironment != "" || os.Getenv("SLACK_MCP_SSE_API_KEY") == ""
+	
+	// Logging configuration
+	config.LogLevel = os.Getenv("SLACK_MCP_LOG_LEVEL")
+	config.LogFormat = os.Getenv("SLACK_MCP_LOG_FORMAT")
+	logColorStr := os.Getenv("SLACK_MCP_LOG_COLOR")
+	config.LogColor = logColorStr == "true" || logColorStr == "1"
+	
+	return config, nil
+}
+
+// validateServerConfig validates the server configuration
+func validateServerConfig(config *ServerConfig) error {
+	// Validate port
+	if _, err := strconv.Atoi(config.Port); err != nil {
+		return fmt.Errorf("invalid port '%s': must be a valid integer", config.Port)
+	}
+	
+	// Validate CORS origins
+	for _, origin := range config.CORSOrigins {
+		if origin == "" {
+			return fmt.Errorf("invalid CORS origin: empty origin not allowed")
+		}
+	}
+	
+	// Validate rate limit
+	if config.RateLimit <= 0 {
+		return fmt.Errorf("invalid rate limit: must be positive")
+	}
+	
+	return nil
+}
+
 func main() {
 	var transport string
 	flag.StringVar(&transport, "t", "stdio", "Transport type (stdio or sse)")
 	flag.StringVar(&transport, "transport", "stdio", "Transport type (stdio or sse)")
 	flag.Parse()
 
-	logger, err := newLogger(transport)
+	// Load and validate server configuration
+	config, err := loadServerConfig()
+	if err != nil {
+		fmt.Printf("Configuration error: %v\n", err)
+		os.Exit(1)
+	}
+	
+	err = validateServerConfig(config)
+	if err != nil {
+		fmt.Printf("Configuration validation error: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger, err := newLogger(transport, config)
 	if err != nil {
 		panic(err)
 	}
 	defer logger.Sync()
+
+	// Log configuration information for debugging
+	logger.Info("Server configuration loaded",
+		zap.String("context", "console"),
+		zap.String("host", config.Host),
+		zap.String("port", config.Port),
+		zap.String("railway_environment", config.RailwayEnvironment),
+		zap.Strings("cors_origins", config.CORSOrigins),
+		zap.Duration("rate_limit_interval", config.RateLimit),
+		zap.Bool("security_headers", config.SecurityHeaders),
+		zap.Bool("health_enabled", config.HealthEnabled),
+		zap.Bool("private_network", config.PrivateNetwork),
+	)
 
 	err = validateToolConfig(os.Getenv("SLACK_MCP_ADD_MESSAGE_TOOL"))
 	if err != nil {
@@ -58,50 +210,50 @@ func main() {
 			)
 		}
 	case "sse":
-		// Railway PORT environment variable takes precedence
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = os.Getenv("SLACK_MCP_PORT")
-			if port == "" {
-				port = strconv.Itoa(defaultSsePort)
-			}
-		}
-
-		host := os.Getenv("SLACK_MCP_HOST")
-		if host == "" {
-			// Empty host for dual-stack IPv4/IPv6 binding on Railway
-			if os.Getenv("PORT") != "" || os.Getenv("RAILWAY_ENVIRONMENT") != "" {
-				host = ""
-			} else {
-				host = defaultSseHost
-			}
-		}
-
 		// Determine bind address for dual-stack or IPv4-only
 		var bindAddr string
-		if host == "" {
-			bindAddr = ":" + port // Dual-stack binding
+		if config.Host == "" {
+			bindAddr = ":" + config.Port // Dual-stack binding
 		} else {
-			bindAddr = host + ":" + port // Specific host binding
+			bindAddr = config.Host + ":" + config.Port // Specific host binding
 		}
 
 		sseServer := s.ServeSSEWithHealthChecks(bindAddr)
 		
-		// Log appropriate address information
-		if host == "" {
+		// Log appropriate address information with enhanced IPv6 support
+		if config.Host == "" {
 			logger.Info("SSE server starting with dual-stack IPv4/IPv6 binding",
 				zap.String("context", "console"),
-				zap.String("port", port),
+				zap.String("port", config.Port),
 				zap.String("bind_address", bindAddr),
+				zap.Bool("railway_deployment", config.RailwayEnvironment != ""),
+				zap.String("railway_environment", config.RailwayEnvironment),
 			)
 		} else {
-			logger.Info(
-				fmt.Sprintf("SSE server listening on %s", fmt.Sprintf("%s:%s/sse", host, port)),
+			// Format IPv6 addresses properly in logs
+			displayHost := config.Host
+			if strings.Contains(config.Host, ":") && !strings.HasPrefix(config.Host, "[") {
+				displayHost = "[" + config.Host + "]"
+			}
+			
+			logger.Info("SSE server starting with specific host binding",
 				zap.String("context", "console"),
-				zap.String("host", host),
-				zap.String("port", port),
+				zap.String("host", displayHost),
+				zap.String("port", config.Port),
+				zap.String("bind_address", bindAddr),
+				zap.String("server_url", fmt.Sprintf("http://%s:%s/sse", displayHost, config.Port)),
 			)
 		}
+
+		// Log security and deployment configuration
+		logger.Info("Security configuration active",
+			zap.String("context", "console"),
+			zap.Strings("cors_origins", config.CORSOrigins),
+			zap.Duration("rate_limit_interval", config.RateLimit),
+			zap.Bool("security_headers_enabled", config.SecurityHeaders),
+			zap.Bool("health_checks_enabled", config.HealthEnabled),
+			zap.Bool("private_network_mode", config.PrivateNetwork),
+		)
 
 		if ready, _ := p.IsReady(); !ready {
 			logger.Info("Slack MCP Server is still warming up caches",
@@ -216,26 +368,26 @@ func validateToolConfig(config string) error {
 	return nil
 }
 
-func newLogger(transport string) (*zap.Logger, error) {
+func newLogger(transport string, config *ServerConfig) (*zap.Logger, error) {
 	atomicLevel := zap.NewAtomicLevelAt(zap.InfoLevel)
-	if envLevel := os.Getenv("SLACK_MCP_LOG_LEVEL"); envLevel != "" {
-		if err := atomicLevel.UnmarshalText([]byte(envLevel)); err != nil {
-			fmt.Printf("Invalid log level '%s': %v, using 'info'\n", envLevel, err)
+	if config.LogLevel != "" {
+		if err := atomicLevel.UnmarshalText([]byte(config.LogLevel)); err != nil {
+			fmt.Printf("Invalid log level '%s': %v, using 'info'\n", config.LogLevel, err)
 		}
 	}
 
-	useJSON := shouldUseJSONFormat()
-	useColors := shouldUseColors() && !useJSON
+	useJSON := shouldUseJSONFormat(config)
+	useColors := shouldUseColors(config) && !useJSON
 
 	outputPath := "stdout"
 	if transport == "stdio" {
 		outputPath = "stderr"
 	}
 
-	var config zap.Config
+	var zapConfig zap.Config
 
 	if useJSON {
-		config = zap.Config{
+		zapConfig = zap.Config{
 			Level:            atomicLevel,
 			Development:      false,
 			Encoding:         "json",
@@ -253,7 +405,7 @@ func newLogger(transport string) (*zap.Logger, error) {
 			},
 		}
 	} else {
-		config = zap.Config{
+		zapConfig = zap.Config{
 			Level:            atomicLevel,
 			Development:      true,
 			Encoding:         "console",
@@ -273,7 +425,7 @@ func newLogger(transport string) (*zap.Logger, error) {
 		}
 	}
 
-	logger, err := config.Build(zap.AddCaller())
+	logger, err := zapConfig.Build(zap.AddCaller())
 	if err != nil {
 		return nil, err
 	}
@@ -284,9 +436,14 @@ func newLogger(transport string) (*zap.Logger, error) {
 }
 
 // shouldUseJSONFormat determines if JSON format should be used
-func shouldUseJSONFormat() bool {
-	if format := os.Getenv("SLACK_MCP_LOG_FORMAT"); format != "" {
-		return strings.ToLower(format) == "json"
+func shouldUseJSONFormat(config *ServerConfig) bool {
+	if config.LogFormat != "" {
+		return strings.ToLower(config.LogFormat) == "json"
+	}
+
+	// Railway deployment should use JSON format for better log aggregation
+	if config.RailwayEnvironment != "" {
+		return true
 	}
 
 	if env := os.Getenv("ENVIRONMENT"); env != "" {
@@ -311,9 +468,9 @@ func shouldUseJSONFormat() bool {
 	return false
 }
 
-func shouldUseColors() bool {
-	if colorEnv := os.Getenv("SLACK_MCP_LOG_COLOR"); colorEnv != "" {
-		return colorEnv == "true" || colorEnv == "1"
+func shouldUseColors(config *ServerConfig) bool {
+	if config.LogColor {
+		return true
 	}
 
 	if os.Getenv("NO_COLOR") != "" {
@@ -322,6 +479,11 @@ func shouldUseColors() bool {
 
 	if os.Getenv("FORCE_COLOR") != "" {
 		return true
+	}
+
+	// Railway deployment should not use colors for better log readability
+	if config.RailwayEnvironment != "" {
+		return false
 	}
 
 	if env := os.Getenv("ENVIRONMENT"); env == "development" || env == "dev" {

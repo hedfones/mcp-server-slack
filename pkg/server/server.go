@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/korotovsky/slack-mcp-server/pkg/handler"
@@ -301,6 +302,41 @@ type EnhancedSSEServer struct {
 
 // Start starts the enhanced SSE server with health check endpoints
 func (e *EnhancedSSEServer) Start(addr string) error {
+	// Log detailed network binding information
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		e.logger.Error("Failed to parse bind address",
+			zap.String("context", "console"),
+			zap.String("address", addr),
+			zap.Error(err),
+		)
+		return fmt.Errorf("invalid bind address %s: %w", addr, err)
+	}
+	
+	// Log network binding details with IPv6 formatting
+	if host == "" {
+		e.logger.Info("Starting server with dual-stack IPv4/IPv6 binding",
+			zap.String("context", "console"),
+			zap.String("bind_address", addr),
+			zap.String("port", port),
+			zap.Bool("dual_stack", true),
+		)
+	} else {
+		formattedHost := host
+		if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+			formattedHost = "[" + host + "]"
+		}
+		
+		e.logger.Info("Starting server with specific host binding",
+			zap.String("context", "console"),
+			zap.String("bind_address", addr),
+			zap.String("host", formattedHost),
+			zap.String("port", port),
+			zap.Bool("dual_stack", false),
+			zap.Bool("ipv6", strings.Contains(host, ":")),
+		)
+	}
+
 	// Create a custom HTTP server with health check routes and security middleware
 	mux := http.NewServeMux()
 	
@@ -353,7 +389,7 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 		)
 	}
 
-	// Create HTTP server
+	// Create HTTP server with enhanced configuration
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
@@ -363,7 +399,37 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	return server.ListenAndServe()
+	// Log server startup with detailed configuration
+	e.logger.Info("HTTP server starting",
+		zap.String("context", "console"),
+		zap.String("address", addr),
+		zap.Duration("read_timeout", server.ReadTimeout),
+		zap.Duration("write_timeout", server.WriteTimeout),
+		zap.Duration("idle_timeout", server.IdleTimeout),
+	)
+
+	// Start the server and handle potential binding errors
+	err = server.ListenAndServe()
+	if err != nil {
+		// Enhanced error logging for network binding issues
+		if strings.Contains(err.Error(), "bind") || strings.Contains(err.Error(), "address already in use") {
+			e.logger.Error("Failed to bind to address - port may be in use or IPv6 unavailable",
+				zap.String("context", "console"),
+				zap.String("address", addr),
+				zap.String("host", host),
+				zap.String("port", port),
+				zap.Error(err),
+			)
+		} else {
+			e.logger.Error("HTTP server error",
+				zap.String("context", "console"),
+				zap.String("address", addr),
+				zap.Error(err),
+			)
+		}
+	}
+	
+	return err
 }
 
 func (s *MCPServer) ServeStdio() error {

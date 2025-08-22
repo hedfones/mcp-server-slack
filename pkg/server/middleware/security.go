@@ -47,6 +47,19 @@ func NewSecurityMiddleware(logger *zap.Logger) *SecurityMiddleware {
 // Handler returns an HTTP middleware function
 func (sm *SecurityMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+		clientIP := formatIPAddress(getClientIP(r))
+		
+		// Log incoming request with IPv6-formatted address
+		sm.config.Logger.Debug("Security middleware processing request",
+			zap.String("event_type", "request_start"),
+			zap.String("client_ip", clientIP),
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.String("user_agent", r.Header.Get("User-Agent")),
+			zap.String("origin", r.Header.Get("Origin")),
+		)
+
 		// Apply rate limiting
 		if !sm.checkRateLimit(r, w) {
 			return
@@ -58,15 +71,36 @@ func (sm *SecurityMiddleware) Handler(next http.Handler) http.Handler {
 		// Apply security headers
 		if sm.config.EnableSecurityHeaders {
 			sm.applySecurityHeaders(w)
+			
+			sm.config.Logger.Debug("Security headers applied",
+				zap.String("event_type", "security_headers_applied"),
+				zap.String("client_ip", clientIP),
+			)
 		}
 
 		// Handle preflight requests
 		if r.Method == http.MethodOptions {
+			sm.config.Logger.Debug("CORS preflight request handled",
+				zap.String("event_type", "cors_preflight"),
+				zap.String("client_ip", clientIP),
+				zap.String("origin", r.Header.Get("Origin")),
+			)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
+		// Process the request
 		next.ServeHTTP(w, r)
+		
+		// Log request completion
+		duration := time.Since(startTime)
+		sm.config.Logger.Debug("Security middleware request completed",
+			zap.String("event_type", "request_completed"),
+			zap.String("client_ip", clientIP),
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.Duration("duration", duration),
+		)
 	})
 }
 
@@ -77,19 +111,36 @@ func (sm *SecurityMiddleware) checkRateLimit(r *http.Request, w http.ResponseWri
 	}
 
 	clientIP := getClientIP(r)
+	formattedIP := formatIPAddress(clientIP)
 	limiter := sm.getRateLimiter(clientIP)
 
 	if !limiter.Allow() {
+		// Structured logging for rate limiting events
 		sm.config.Logger.Warn("Rate limit exceeded",
-			zap.String("client_ip", clientIP),
+			zap.String("event_type", "rate_limit_exceeded"),
+			zap.String("client_ip", formattedIP),
+			zap.String("client_ip_raw", clientIP),
 			zap.String("path", r.URL.Path),
+			zap.String("method", r.Method),
+			zap.String("user_agent", r.Header.Get("User-Agent")),
+			zap.Float64("rate_limit_rpm", 60.0/sm.config.RateLimit.Minutes()),
+			zap.String("x_forwarded_for", r.Header.Get("X-Forwarded-For")),
+			zap.String("x_real_ip", r.Header.Get("X-Real-IP")),
 		)
 
-		sm.writeErrorResponse(w, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", 
+		sm.writeErrorResponse(w, r, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", 
 			"Too many requests from this client", 
 			fmt.Sprintf("Rate limit of %.0f requests per minute exceeded", 60.0/sm.config.RateLimit.Minutes()))
 		return false
 	}
+
+	// Log successful rate limit check for debugging (at debug level)
+	sm.config.Logger.Debug("Rate limit check passed",
+		zap.String("event_type", "rate_limit_check"),
+		zap.String("client_ip", formattedIP),
+		zap.String("path", r.URL.Path),
+		zap.String("method", r.Method),
+	)
 
 	return true
 }
@@ -118,17 +169,47 @@ func (sm *SecurityMiddleware) getRateLimiter(ip string) *rate.Limiter {
 // applyCORS applies CORS headers to the response
 func (sm *SecurityMiddleware) applyCORS(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
+	clientIP := formatIPAddress(getClientIP(r))
 	
 	// If no origins configured, allow all origins for private network deployment
 	if len(sm.config.CORSOrigins) == 0 {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		
+		// Log CORS policy application
+		sm.config.Logger.Debug("CORS policy applied - allow all origins",
+			zap.String("event_type", "cors_applied"),
+			zap.String("client_ip", clientIP),
+			zap.String("origin", origin),
+			zap.String("policy", "allow_all"),
+		)
 	} else {
 		// Check if origin is in allowed list
+		allowed := false
 		for _, allowedOrigin := range sm.config.CORSOrigins {
 			if allowedOrigin == "*" || allowedOrigin == origin {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				allowed = true
 				break
 			}
+		}
+		
+		// Log CORS policy application with structured data
+		if allowed {
+			sm.config.Logger.Debug("CORS policy applied - origin allowed",
+				zap.String("event_type", "cors_applied"),
+				zap.String("client_ip", clientIP),
+				zap.String("origin", origin),
+				zap.String("policy", "origin_allowed"),
+				zap.Strings("allowed_origins", sm.config.CORSOrigins),
+			)
+		} else if origin != "" {
+			sm.config.Logger.Info("CORS policy blocked origin",
+				zap.String("event_type", "cors_blocked"),
+				zap.String("client_ip", clientIP),
+				zap.String("origin", origin),
+				zap.String("policy", "origin_blocked"),
+				zap.Strings("allowed_origins", sm.config.CORSOrigins),
+			)
 		}
 	}
 
@@ -152,7 +233,7 @@ func (sm *SecurityMiddleware) applySecurityHeaders(w http.ResponseWriter) {
 }
 
 // writeErrorResponse writes a standardized error response
-func (sm *SecurityMiddleware) writeErrorResponse(w http.ResponseWriter, statusCode int, errorCode, message, details string) {
+func (sm *SecurityMiddleware) writeErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, errorCode, message, details string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	
@@ -164,9 +245,34 @@ func (sm *SecurityMiddleware) writeErrorResponse(w http.ResponseWriter, statusCo
   },
   "timestamp": "%s",
   "path": "%s"
-}`, errorCode, message, details, time.Now().UTC().Format(time.RFC3339), "")
+}`, errorCode, message, details, time.Now().UTC().Format(time.RFC3339), r.URL.Path)
 
 	w.Write([]byte(errorResponse))
+}
+
+// formatIPAddress formats IP addresses properly, especially IPv6 addresses
+func formatIPAddress(ip string) string {
+	if ip == "" {
+		return "unknown"
+	}
+	
+	// Parse the IP to determine if it's IPv6
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		// If parsing fails, return as-is
+		return ip
+	}
+	
+	// Check if it's an IPv6 address
+	if parsedIP.To4() == nil {
+		// This is an IPv6 address
+		// If it doesn't already have brackets and contains colons, add them for display
+		if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
+			return fmt.Sprintf("[%s]", ip)
+		}
+	}
+	
+	return ip
 }
 
 // getClientIP extracts the client IP address from the request

@@ -57,14 +57,14 @@
   - Update server initialization to include new middleware components
   - _Requirements: 4.1, 4.5_
 
-- [ ] 6. Update configuration and environment handling
-- [ ] 6.1 Add new environment variable support
+- [x] 6. Update configuration and environment handling
+- [x] 6.1 Add new environment variable support
   - Add support for Railway-specific environment variables (PORT, RAILWAY_ENVIRONMENT)
   - Implement new configuration variables for CORS, rate limiting, and security
   - Update environment variable validation and default value handling
   - _Requirements: 1.4, 4.3, 4.2_
 
-- [ ] 6.2 Update logging for IPv6 and remote deployment
+- [x] 6.2 Update logging for IPv6 and remote deployment
   - Enhance logging to properly format IPv6 addresses in network activity
   - Add structured logging for security events and rate limiting
   - Update startup logging to show dual-stack binding information

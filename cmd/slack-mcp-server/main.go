@@ -58,22 +58,50 @@ func main() {
 			)
 		}
 	case "sse":
-		host := os.Getenv("SLACK_MCP_HOST")
-		if host == "" {
-			host = defaultSseHost
-		}
-		port := os.Getenv("SLACK_MCP_PORT")
+		// Railway PORT environment variable takes precedence
+		port := os.Getenv("PORT")
 		if port == "" {
-			port = strconv.Itoa(defaultSsePort)
+			port = os.Getenv("SLACK_MCP_PORT")
+			if port == "" {
+				port = strconv.Itoa(defaultSsePort)
+			}
 		}
 
-		sseServer := s.ServeSSE(":" + port)
-		logger.Info(
-			fmt.Sprintf("SSE server listening on %s", fmt.Sprintf("%s:%s/sse", host, port)),
-			zap.String("context", "console"),
-			zap.String("host", host),
-			zap.String("port", port),
-		)
+		host := os.Getenv("SLACK_MCP_HOST")
+		if host == "" {
+			// Empty host for dual-stack IPv4/IPv6 binding on Railway
+			if os.Getenv("PORT") != "" || os.Getenv("RAILWAY_ENVIRONMENT") != "" {
+				host = ""
+			} else {
+				host = defaultSseHost
+			}
+		}
+
+		// Determine bind address for dual-stack or IPv4-only
+		var bindAddr string
+		if host == "" {
+			bindAddr = ":" + port // Dual-stack binding
+		} else {
+			bindAddr = host + ":" + port // Specific host binding
+		}
+
+		sseServer := s.ServeSSE(bindAddr)
+		
+		// Log appropriate address information
+		if host == "" {
+			logger.Info("SSE server starting with dual-stack IPv4/IPv6 binding",
+				zap.String("context", "console"),
+				zap.String("port", port),
+				zap.String("bind_address", bindAddr),
+			)
+		} else {
+			logger.Info(
+				fmt.Sprintf("SSE server listening on %s", fmt.Sprintf("%s:%s/sse", host, port)),
+				zap.String("context", "console"),
+				zap.String("host", host),
+				zap.String("port", port),
+			)
+		}
 
 		if ready, _ := p.IsReady(); !ready {
 			logger.Info("Slack MCP Server is still warming up caches",
@@ -81,7 +109,7 @@ func main() {
 			)
 		}
 
-		if err := sseServer.Start(host + ":" + port); err != nil {
+		if err := sseServer.Start(bindAddr); err != nil {
 			logger.Fatal("Server error",
 				zap.String("context", "console"),
 				zap.Error(err),

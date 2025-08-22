@@ -5,14 +5,14 @@
   - Configure health check path and environment variables for Railway
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Implement IPv6 dual-stack network binding
-- [ ] 2.1 Enhance network binding logic in main.go
+- [x] 2. Implement IPv6 dual-stack network binding
+- [x] 2.1 Enhance network binding logic in main.go
   - Modify SSE server startup to support dual-stack IPv4/IPv6 binding
   - Add Railway PORT environment variable detection and handling
   - Implement graceful fallback to IPv4-only when IPv6 is unavailable
   - _Requirements: 2.1, 2.2, 2.4_
 
-- [ ] 2.2 Update server configuration for dual-stack support
+- [x] 2.2 Update server configuration for dual-stack support
   - Modify server.go to handle empty host binding for dual-stack
   - Add IPv6 address formatting in logging output
   - Update SSE server base URL configuration for Railway deployment

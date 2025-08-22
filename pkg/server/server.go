@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/korotovsky/slack-mcp-server/pkg/handler"
@@ -211,8 +213,12 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 		zap.String("commit_hash", version.CommitHash),
 		zap.String("address", addr),
 	)
+
+	// Determine base URL for Railway deployment or local development
+	baseURL := s.determineBaseURL(addr)
+	
 	return server.NewSSEServer(s.server,
-		server.WithBaseURL(fmt.Sprintf("http://%s", addr)),
+		server.WithBaseURL(baseURL),
 		server.WithSSEContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			ctx = auth.AuthFromRequest(s.logger)(ctx, r)
 
@@ -256,4 +262,38 @@ func buildLoggerMiddleware(logger *zap.Logger) server.ToolHandlerMiddleware {
 			return res, err
 		}
 	}
+}
+
+// determineBaseURL determines the appropriate base URL for the SSE server
+// considering Railway deployment and IPv6 address formatting
+func (s *MCPServer) determineBaseURL(addr string) string {
+	// Check for Railway-specific base URL configuration
+	if baseURL := os.Getenv("SLACK_MCP_BASE_URL"); baseURL != "" {
+		return baseURL
+	}
+
+	// For Railway deployment, use the provided Railway URL if available
+	if railwayURL := os.Getenv("RAILWAY_PUBLIC_DOMAIN"); railwayURL != "" {
+		return fmt.Sprintf("https://%s", railwayURL)
+	}
+
+	// Parse the address to handle IPv6 formatting
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// If parsing fails, fall back to the original format
+		return fmt.Sprintf("http://%s", addr)
+	}
+
+	// Handle empty host (dual-stack binding)
+	if host == "" {
+		host = "localhost"
+	}
+
+	// Format IPv6 addresses properly with brackets
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		// This is an IPv6 address, wrap in brackets
+		host = fmt.Sprintf("[%s]", host)
+	}
+
+	return fmt.Sprintf("http://%s:%s", host, port)
 }

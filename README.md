@@ -115,6 +115,7 @@ Fetches a CSV directory of all users in the workspace.
 - [Authentication Setup](docs/01-authentication-setup.md)
 - [Installation](docs/02-installation.md)
 - [Configuration and Usage](docs/03-configuration-and-usage.md)
+- [Railway Deployment](docs/04-railway-deployment.md)
 
 ### Environment Variables (Quick Reference)
 
@@ -138,6 +139,10 @@ Fetches a CSV directory of all users in the workspace.
 | `SLACK_MCP_USERS_CACHE`           | No        | `.users_cache.json`       | Path to the users cache file. Used to cache Slack user information to avoid repeated API calls on startup.                                                                                                                                                                                |
 | `SLACK_MCP_CHANNELS_CACHE`        | No        | `.channels_cache_v2.json` | Path to the channels cache file. Used to cache Slack channel information to avoid repeated API calls on startup.                                                                                                                                                                          |
 | `SLACK_MCP_LOG_LEVEL`             | No        | `info`                    | Log-level for stdout or stderr. Valid values are: `debug`, `info`, `warn`, `error`, `panic` and `fatal`                                                                                                                                                                                   |
+| `SLACK_MCP_CORS_ORIGINS`          | No        | `*`                       | Comma-separated allowed CORS origins for remote deployment                                                                                                                                                                                                                                 |
+| `SLACK_MCP_RATE_LIMIT`            | No        | `60`                      | Requests per minute per IP address for rate limiting                                                                                                                                                                                                                                       |
+| `SLACK_MCP_SECURITY_HEADERS`      | No        | `true`                    | Enable security headers for remote deployment                                                                                                                                                                                                                                              |
+| `SLACK_MCP_HEALTH_ENABLED`        | No        | `true`                    | Enable health check endpoints (/health, /health/ready, /health/live)                                                                                                                                                                                                                      |
 
 *You need either `xoxp` **or** both `xoxc`/`xoxd` tokens for authentication.
 

@@ -12,8 +12,21 @@ services:
     env_file:
       - .env
     environment:
-      SLACK_MCP_HOST: "0.0.0.0"
+      # Network configuration
+      SLACK_MCP_HOST: "" # Empty for dual-stack IPv4/IPv6 binding
       SLACK_MCP_PORT: "3001"
+      SLACK_MCP_BASE_URL: "http://localhost:3001" # External base URL
+      
+      # Security and CORS configuration
+      SLACK_MCP_CORS_ORIGINS: "*" # Comma-separated allowed origins
+      SLACK_MCP_RATE_LIMIT: "60" # Requests per minute per IP
+      SLACK_MCP_SECURITY_HEADERS: "true" # Enable security headers
+      SLACK_MCP_HEALTH_ENABLED: "true" # Enable health endpoints
+      
+      # Logging configuration
+      SLACK_MCP_LOG_LEVEL: "info" # Log level: debug, info, warn, error
+      SLACK_MCP_LOG_FORMAT: "console" # Log format: json or console
+      SLACK_MCP_LOG_COLOR: "true" # Enable colored console output
 
 volumes:
   users_cache:

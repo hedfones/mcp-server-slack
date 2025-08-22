@@ -10,32 +10,32 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 // SecurityConfig holds configuration for security middleware
 type SecurityConfig struct {
-	CORSOrigins          []string
+	CORSOrigins           []string
 	EnableSecurityHeaders bool
-	RateLimit            time.Duration
-	Logger               *zap.Logger
+	RateLimit             time.Duration
+	Logger                *zap.Logger
 }
 
 // SecurityMiddleware provides CORS, security headers, and rate limiting
 type SecurityMiddleware struct {
-	config      SecurityConfig
+	config       SecurityConfig
 	rateLimiters map[string]*rate.Limiter
-	mu          sync.RWMutex
+	mu           sync.RWMutex
 }
 
 // NewSecurityMiddleware creates a new security middleware instance
 func NewSecurityMiddleware(logger *zap.Logger) *SecurityMiddleware {
 	config := SecurityConfig{
-		CORSOrigins:          parseCORSOrigins(),
+		CORSOrigins:           parseCORSOrigins(),
 		EnableSecurityHeaders: parseSecurityHeaders(),
-		RateLimit:            parseRateLimit(),
-		Logger:               logger,
+		RateLimit:             parseRateLimit(),
+		Logger:                logger,
 	}
 
 	return &SecurityMiddleware{
@@ -49,7 +49,7 @@ func (sm *SecurityMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 		clientIP := formatIPAddress(getClientIP(r))
-		
+
 		// Log incoming request with IPv6-formatted address
 		sm.config.Logger.Debug("Security middleware processing request",
 			zap.String("event_type", "request_start"),
@@ -71,7 +71,7 @@ func (sm *SecurityMiddleware) Handler(next http.Handler) http.Handler {
 		// Apply security headers
 		if sm.config.EnableSecurityHeaders {
 			sm.applySecurityHeaders(w)
-			
+
 			sm.config.Logger.Debug("Security headers applied",
 				zap.String("event_type", "security_headers_applied"),
 				zap.String("client_ip", clientIP),
@@ -91,7 +91,7 @@ func (sm *SecurityMiddleware) Handler(next http.Handler) http.Handler {
 
 		// Process the request
 		next.ServeHTTP(w, r)
-		
+
 		// Log request completion
 		duration := time.Since(startTime)
 		sm.config.Logger.Debug("Security middleware request completed",
@@ -128,8 +128,8 @@ func (sm *SecurityMiddleware) checkRateLimit(r *http.Request, w http.ResponseWri
 			zap.String("x_real_ip", r.Header.Get("X-Real-IP")),
 		)
 
-		sm.writeErrorResponse(w, r, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", 
-			"Too many requests from this client", 
+		sm.writeErrorResponse(w, r, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED",
+			"Too many requests from this client",
 			fmt.Sprintf("Rate limit of %.0f requests per minute exceeded", 60.0/sm.config.RateLimit.Minutes()))
 		return false
 	}
@@ -170,11 +170,11 @@ func (sm *SecurityMiddleware) getRateLimiter(ip string) *rate.Limiter {
 func (sm *SecurityMiddleware) applyCORS(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	clientIP := formatIPAddress(getClientIP(r))
-	
+
 	// If no origins configured, allow all origins for private network deployment
 	if len(sm.config.CORSOrigins) == 0 {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		
+
 		// Log CORS policy application
 		sm.config.Logger.Debug("CORS policy applied - allow all origins",
 			zap.String("event_type", "cors_applied"),
@@ -192,7 +192,7 @@ func (sm *SecurityMiddleware) applyCORS(w http.ResponseWriter, r *http.Request) 
 				break
 			}
 		}
-		
+
 		// Log CORS policy application with structured data
 		if allowed {
 			sm.config.Logger.Debug("CORS policy applied - origin allowed",
@@ -227,7 +227,7 @@ func (sm *SecurityMiddleware) applySecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-XSS-Protection", "1; mode=block")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	
+
 	// Content Security Policy for private network deployment
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
 }
@@ -236,7 +236,7 @@ func (sm *SecurityMiddleware) applySecurityHeaders(w http.ResponseWriter) {
 func (sm *SecurityMiddleware) writeErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, errorCode, message, details string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	errorResponse := fmt.Sprintf(`{
   "error": {
     "code": "%s",
@@ -255,14 +255,14 @@ func formatIPAddress(ip string) string {
 	if ip == "" {
 		return "unknown"
 	}
-	
+
 	// Parse the IP to determine if it's IPv6
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		// If parsing fails, return as-is
 		return ip
 	}
-	
+
 	// Check if it's an IPv6 address
 	if parsedIP.To4() == nil {
 		// This is an IPv6 address
@@ -271,7 +271,7 @@ func formatIPAddress(ip string) string {
 			return fmt.Sprintf("[%s]", ip)
 		}
 	}
-	
+
 	return ip
 }
 
@@ -343,8 +343,18 @@ func parseRateLimit() time.Duration {
 
 	// Parse as requests per minute
 	requestsPerMinute, err := strconv.Atoi(value)
-	if err != nil || requestsPerMinute <= 0 {
+	if err != nil {
 		return time.Minute // Default on parse error
+	}
+
+	// Handle special case: 0 means no rate limiting
+	if requestsPerMinute == 0 {
+		return 0 // Disabled
+	}
+
+	// Handle negative values
+	if requestsPerMinute < 0 {
+		return time.Minute // Default on invalid value
 	}
 
 	// Convert to duration between requests

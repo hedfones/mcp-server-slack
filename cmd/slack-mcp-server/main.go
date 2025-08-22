@@ -85,7 +85,7 @@ func main() {
 			bindAddr = host + ":" + port // Specific host binding
 		}
 
-		sseServer := s.ServeSSE(bindAddr)
+		sseServer := s.ServeSSEWithHealthChecks(bindAddr)
 		
 		// Log appropriate address information
 		if host == "" {

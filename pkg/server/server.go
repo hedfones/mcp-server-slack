@@ -19,8 +19,10 @@ import (
 )
 
 type MCPServer struct {
-	server *server.MCPServer
-	logger *zap.Logger
+	server       *server.MCPServer
+	logger       *zap.Logger
+	provider     *provider.ApiProvider
+	healthChecker *HealthChecker
 }
 
 func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger) *MCPServer {
@@ -199,9 +201,17 @@ func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger) *MCPServer
 		mcp.WithMIMEType("text/csv"),
 	), conversationsHandler.UsersResource)
 
+	// Initialize health checker if enabled
+	var healthChecker *HealthChecker
+	if IsHealthCheckEnabled() {
+		healthChecker = NewHealthChecker(provider, logger)
+	}
+
 	return &MCPServer{
-		server: s,
-		logger: logger,
+		server:        s,
+		logger:        logger,
+		provider:      provider,
+		healthChecker: healthChecker,
 	}
 }
 
@@ -225,6 +235,65 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 			return ctx
 		}),
 	)
+}
+
+// ServeSSEWithHealthChecks creates an SSE server with integrated health check endpoints
+func (s *MCPServer) ServeSSEWithHealthChecks(addr string) *EnhancedSSEServer {
+	sseServer := s.ServeSSE(addr)
+	
+	return &EnhancedSSEServer{
+		sseServer:     sseServer,
+		healthChecker: s.healthChecker,
+		logger:        s.logger,
+	}
+}
+
+// EnhancedSSEServer wraps the MCP SSE server with health check functionality
+type EnhancedSSEServer struct {
+	sseServer     *server.SSEServer
+	healthChecker *HealthChecker
+	logger        *zap.Logger
+}
+
+// Start starts the enhanced SSE server with health check endpoints
+func (e *EnhancedSSEServer) Start(addr string) error {
+	if e.healthChecker == nil {
+		// If health checks are disabled, just start the regular SSE server
+		return e.sseServer.Start(addr)
+	}
+
+	// Create a custom HTTP server with health check routes
+	mux := http.NewServeMux()
+	
+	// Add health check endpoints
+	mux.HandleFunc("/health", e.healthChecker.HealthHandler)
+	mux.HandleFunc("/health/ready", e.healthChecker.ReadinessHandler)
+	mux.HandleFunc("/health/live", e.healthChecker.LivenessHandler)
+	
+	// Add the SSE server handler for all other routes
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Check if this is a health check endpoint
+		if r.URL.Path == "/health" || r.URL.Path == "/health/ready" || r.URL.Path == "/health/live" {
+			// These are handled by the specific handlers above
+			return
+		}
+		
+		// For all other requests, delegate to the SSE server
+		e.sseServer.ServeHTTP(w, r)
+	})
+
+	// Create HTTP server
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	e.logger.Info("Health check endpoints enabled",
+		zap.String("context", "console"),
+		zap.Strings("endpoints", []string{"/health", "/health/ready", "/health/live"}),
+	)
+
+	return server.ListenAndServe()
 }
 
 func (s *MCPServer) ServeStdio() error {

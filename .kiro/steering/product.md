@@ -1,25 +1,23 @@
 # Product Overview
 
-Slack MCP Server is a Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to Slack workspaces. It's designed as a powerful integration tool that enables LLMs to interact with Slack data and functionality.
+Slack MCP Server is a Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to Slack workspaces. It enables reading messages, searching conversations, posting messages, and accessing channel/user information through a standardized MCP interface.
 
 ## Key Features
 
-- **Dual Authentication**: Supports both stealth mode (xoxc/xoxd browser tokens) and OAuth mode (xoxp tokens)
-- **Enterprise Support**: Works with Enterprise Slack setups and Slack Connect
-- **Multiple Transports**: Supports both Stdio and SSE (Server-Sent Events) transports
-- **Smart History**: Fetch messages with pagination by date ranges or message count
-- **Search Capabilities**: Advanced message search with multiple filters (date, user, channel, content)
+- **Dual Authentication**: Supports both stealth mode (browser tokens) and OAuth tokens
+- **Multiple Transports**: Stdio and SSE (Server-Sent Events) transport protocols
+- **Smart History**: Fetch messages by date ranges or message count with pagination
+- **Search Capabilities**: Advanced message search with filters (date, user, channel, content)
 - **Channel Management**: Access to public/private channels, DMs, and group DMs
-- **Safe Message Posting**: Optional message posting with channel restrictions for safety
-- **Caching System**: Intelligent caching of users and channels for performance
+- **Message Posting**: Safe message posting with optional channel restrictions
+- **Enterprise Support**: Works with Enterprise Slack setups and proxy configurations
+- **Caching**: User and channel caching for improved performance
+- **Security**: Rate limiting, CORS, security headers, and health checks
 
-## Target Users
+## Target Use Cases
 
-- AI/LLM developers integrating Slack functionality
-- Enterprise teams needing programmatic Slack access
-- Developers building Slack-powered AI assistants
-- Teams requiring stealth-mode Slack integration without bot permissions
-
-## Safety & Security
-
-The server prioritizes safety with disabled message posting by default, configurable channel restrictions, and support for proxy configurations for enterprise environments.
+- AI assistants analyzing Slack conversations and workspace activity
+- Automated message posting and thread management
+- Workspace analytics and reporting
+- Integration with MCP-compatible AI clients (Claude, etc.)
+- Enterprise Slack automation and monitoring

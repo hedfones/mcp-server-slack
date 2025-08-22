@@ -1,78 +1,77 @@
 # Project Structure
 
-## Root Directory
-
-- `cmd/` - Application entry points
-- `pkg/` - Reusable packages and core logic
-- `docs/` - Documentation files
-- `npm/` - NPM packaging for distribution
-- `build/` - Build artifacts and compiled binaries
-- `images/` - Project assets (demos, icons)
-
-## Core Application (`cmd/`)
+## Directory Organization
 
 ```
-cmd/slack-mcp-server/
-├── main.go                 # Application entry point with transport selection
+├── cmd/slack-mcp-server/     # Main application entry point
+├── pkg/                      # Core application packages
+│   ├── handler/             # MCP tool handlers (channels, conversations)
+│   ├── limiter/             # Rate limiting functionality
+│   ├── provider/            # Slack API provider and edge client
+│   │   └── edge/           # Low-level Slack API client (from rusq/slackdump)
+│   ├── server/             # HTTP server and middleware
+│   │   ├── auth/           # SSE authentication
+│   │   └── middleware/     # Security middleware
+│   ├── text/               # Text processing utilities
+│   ├── transport/          # MCP transport layer
+│   └── version/            # Version information
+├── docs/                    # Documentation
+├── npm/                     # NPM package distributions
+├── build/                   # Build artifacts
+└── images/                  # Project assets
 ```
 
-Main responsibilities:
-- Command-line argument parsing (stdio vs sse transport)
-- Logger configuration with environment-based settings
-- Provider initialization and cache warming
-- Server startup for chosen transport
+## Package Responsibilities
 
-## Package Structure (`pkg/`)
+### cmd/slack-mcp-server
+- Main application entry point
+- Configuration loading and validation
+- Transport selection (stdio/sse)
+- Logging setup
+- Cache warming (users/channels)
 
-### `pkg/handler/` - MCP Tool Handlers
-- `channels.go` - Channel listing and management
-- `conversations.go` - Message history, replies, search, posting
-- `*_test.go` - Unit tests for handlers
+### pkg/handler
+- **channels.go**: Channel listing and management tools
+- **conversations.go**: Message history, replies, search, and posting tools
+- Implements MCP tool interface
 
-### `pkg/provider/` - Slack API Abstraction
-- `api.go` - Main provider with authentication and caching
-- `edge/` - Enterprise Slack client implementation
-  - `client.go` - Edge API client
-  - `conversations.go` - Enterprise conversation handling
-  - `fasttime/` - Time utilities for performance
+### pkg/provider
+- **api.go**: Main API provider interface
+- **edge/**: Low-level Slack client (adapted from rusq/slackdump)
+- Handles authentication, caching, and Slack API interactions
 
-### `pkg/server/` - MCP Server Implementation
-- `server.go` - MCP server setup with tools and resources
-- `auth/` - Authentication middleware for SSE transport
+### pkg/server
+- **server.go**: MCP server implementation
+- **health.go**: Health check endpoints
+- **middleware/**: Security headers, rate limiting
+- **auth/**: SSE authentication
 
-### `pkg/transport/` - HTTP Transport Configuration
-- `transport.go` - HTTP client setup with proxy support
+## Code Organization Patterns
 
-### `pkg/text/` - Text Processing
-- `text_processor.go` - Message formatting and workspace parsing
+### Configuration
+- Environment variables loaded in main.go
+- Validation separated from loading
+- Railway-specific deployment handling
 
-### `pkg/version/` - Version Information
-- `version.go` - Build-time version injection
+### Error Handling
+- Structured logging with zap
+- Context-aware error propagation
+- Graceful degradation for missing features
 
-### `pkg/limiter/` - Rate Limiting
-- `limits.go` - API rate limiting configuration
+### Testing
+- Unit tests alongside source files (*_test.go)
+- Integration tests in separate test runs
+- Test utilities in pkg/test/
 
-### `pkg/test/` - Testing Utilities
-- `util/` - Test helpers for MCP and ngrok
+### Build Artifacts
+- Multi-platform binaries in build/
+- NPM packages for different architectures
+- Docker images for containerized deployment
 
 ## Naming Conventions
 
-- **Files**: Snake case (e.g., `text_processor.go`)
-- **Packages**: Single word, lowercase (e.g., `handler`, `provider`)
-- **Types**: PascalCase (e.g., `ApiProvider`, `MCPServer`)
-- **Functions**: PascalCase for exported, camelCase for private
-- **Constants**: PascalCase or UPPER_CASE for package-level
-
-## Testing Strategy
-
-- Unit tests alongside source files (`*_test.go`)
-- Integration tests with `Integration` suffix in test names
-- Test utilities in `pkg/test/util/`
-- Separate test commands: `make test` (unit) and `make test-integration`
-
-## Configuration Files
-
-- `.env.dist` - Environment variable template
-- `docker-compose*.yml` - Container orchestration
-- `Dockerfile` - Container build instructions
-- `manifest-dxt.json` - DXT extension manifest
+- **Files**: snake_case for Go files
+- **Packages**: lowercase, descriptive names
+- **Functions**: PascalCase for exported, camelCase for internal
+- **Constants**: UPPER_SNAKE_CASE for environment variables
+- **Interfaces**: Descriptive names ending in -er when appropriate

@@ -3,22 +3,21 @@
 ## Core Technologies
 
 - **Language**: Go 1.24.4
-- **Primary Framework**: MCP (Model Context Protocol) using `mark3labs/mcp-go`
-- **Slack Integration**: `slack-go/slack` + custom edge client for enterprise features
-- **Authentication**: `rusq/slackauth` for token-based auth
+- **Framework**: Model Context Protocol (MCP) using `github.com/mark3labs/mcp-go`
+- **Slack Integration**: `github.com/rusq/slack` and `github.com/slack-go/slack`
+- **Authentication**: `github.com/rusq/slackauth` for token management
 - **Logging**: `go.uber.org/zap` for structured logging
-- **Rate Limiting**: `golang.org/x/time/rate` for API throttling
+- **HTTP**: Standard library with custom middleware for security and rate limiting
 
 ## Key Dependencies
 
-- `github.com/rusq/slackdump/v3` - Slack data extraction
-- `github.com/refraction-networking/utls` - Custom TLS for enterprise environments
-- `golang.ngrok.com/ngrok/v2` - Tunneling support for development
-- `github.com/gocarina/gocsv` - CSV handling for resource exports
+- **MCP Protocol**: `github.com/mark3labs/mcp-go` - Core MCP server implementation
+- **Slack APIs**: Multiple Slack client libraries for different authentication methods
+- **Security**: Custom TLS handling with `github.com/refraction-networking/utls`
+- **CSV Processing**: `github.com/gocarina/gocsv` for resource exports
+- **Testing**: `github.com/stretchr/testify` for unit tests
 
 ## Build System
-
-Uses Make for build automation with cross-platform support:
 
 ### Common Commands
 
@@ -38,9 +37,6 @@ make test-integration
 # Format code
 make format
 
-# Tidy dependencies
-make tidy
-
 # Clean build artifacts
 make clean
 
@@ -48,25 +44,24 @@ make clean
 make release TAG=v1.2.3
 ```
 
-### NPM Distribution
+### Development Workflow
 
-The project includes NPM packaging for easy installation:
-- Platform-specific binaries in `npm/slack-mcp-server-{os}-{arch}/`
-- Main package in `npm/slack-mcp-server/`
-- Automated publishing with `make npm-publish`
+- Use `make format` before committing
+- Run `make test` for unit tests
+- Use `make tidy` to clean up go.mod
+- Build with `make build` for local testing
 
-## Architecture Patterns
+## Transport Modes
 
-- **Provider Pattern**: `pkg/provider/` abstracts Slack API interactions
-- **Handler Pattern**: `pkg/handler/` implements MCP tool handlers
-- **Transport Abstraction**: Supports both Stdio and SSE transports
-- **Middleware**: Logging and authentication middleware for request processing
-- **Caching Strategy**: File-based JSON caching for users and channels
+- **Stdio**: For direct MCP client integration (default)
+- **SSE**: HTTP Server-Sent Events for web-based clients
+- Configurable via `--transport` flag or `-t` shorthand
 
 ## Environment Configuration
 
-All configuration via environment variables with `SLACK_MCP_` prefix. Key variables:
-- Authentication: `SLACK_MCP_XOXC_TOKEN`, `SLACK_MCP_XOXD_TOKEN`, `SLACK_MCP_XOXP_TOKEN`
-- Server: `SLACK_MCP_HOST`, `SLACK_MCP_PORT`
-- Features: `SLACK_MCP_ADD_MESSAGE_TOOL`
-- Caching: `SLACK_MCP_USERS_CACHE`, `SLACK_MCP_CHANNELS_CACHE`
+Extensive environment variable configuration for:
+- Slack authentication (XOXC/XOXD tokens or XOXP OAuth)
+- Server settings (host, port, CORS, rate limiting)
+- Security features (headers, health checks, proxy support)
+- Caching (users, channels)
+- Logging (level, format, colors)

@@ -44,14 +44,14 @@
   - Implement rate limit exceeded error responses with proper HTTP status codes
   - _Requirements: 4.2, 4.4_
 
-- [ ] 5. Enhance remote MCP server capabilities
-- [ ] 5.1 Update SSE server for remote deployment
+- [x] 5. Enhance remote MCP server capabilities
+- [x] 5.1 Update SSE server for remote deployment
   - Modify SSE server configuration to support external base URLs
   - Add proper CORS handling for browser-based MCP clients
   - Implement standardized HTTP error response format
   - _Requirements: 3.1, 3.3, 3.5_
 
-- [ ] 5.2 Integrate security middleware into server
+- [x] 5.2 Integrate security middleware into server
   - Add security middleware to SSE server middleware chain
   - Remove existing authentication middleware for private network deployment
   - Update server initialization to include new middleware components

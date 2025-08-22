@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/korotovsky/slack-mcp-server/pkg/handler"
 	"github.com/korotovsky/slack-mcp-server/pkg/provider"
 	"github.com/korotovsky/slack-mcp-server/pkg/server/auth"
+	"github.com/korotovsky/slack-mcp-server/pkg/server/middleware"
 	"github.com/korotovsky/slack-mcp-server/pkg/text"
 	"github.com/korotovsky/slack-mcp-server/pkg/version"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,14 +28,36 @@ type MCPServer struct {
 }
 
 func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger) *MCPServer {
-	s := server.NewMCPServer(
-		"Slack MCP Server",
-		version.Version,
-		server.WithLogging(),
-		server.WithRecovery(),
-		server.WithToolHandlerMiddleware(buildLoggerMiddleware(logger)),
-		server.WithToolHandlerMiddleware(auth.BuildMiddleware(provider.ServerTransport(), logger)),
-	)
+	// Create base server with logging and recovery
+	var s *server.MCPServer
+	
+	// Only add authentication middleware if not in private network deployment mode
+	if !isPrivateNetworkDeployment() {
+		s = server.NewMCPServer(
+			"Slack MCP Server",
+			version.Version,
+			server.WithLogging(),
+			server.WithRecovery(),
+			server.WithToolHandlerMiddleware(buildLoggerMiddleware(logger)),
+			server.WithToolHandlerMiddleware(auth.BuildMiddleware(provider.ServerTransport(), logger)),
+		)
+		logger.Info("Authentication middleware enabled",
+			zap.String("context", "console"),
+			zap.String("transport", provider.ServerTransport()),
+		)
+	} else {
+		s = server.NewMCPServer(
+			"Slack MCP Server",
+			version.Version,
+			server.WithLogging(),
+			server.WithRecovery(),
+			server.WithToolHandlerMiddleware(buildLoggerMiddleware(logger)),
+		)
+		logger.Info("Authentication middleware disabled for private network deployment",
+			zap.String("context", "console"),
+			zap.String("transport", provider.ServerTransport()),
+		)
+	}
 
 	conversationsHandler := handler.NewConversationsHandler(provider, logger)
 
@@ -227,71 +251,117 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 	// Determine base URL for Railway deployment or local development
 	baseURL := s.determineBaseURL(addr)
 	
+	s.logger.Info("SSE server configured for remote deployment",
+		zap.String("context", "console"),
+		zap.String("base_url", baseURL),
+		zap.Bool("external_deployment", s.isExternalDeployment()),
+	)
+	
+	// Configure SSE context function based on deployment type
+	var contextFunc func(context.Context, *http.Request) context.Context
+	if !isPrivateNetworkDeployment() {
+		// Use authentication context for non-private deployments
+		contextFunc = func(ctx context.Context, r *http.Request) context.Context {
+			return auth.AuthFromRequest(s.logger)(ctx, r)
+		}
+	} else {
+		// Use minimal context for private network deployments
+		contextFunc = func(ctx context.Context, r *http.Request) context.Context {
+			// Add any minimal context needed for private network deployment
+			return ctx
+		}
+	}
+	
 	return server.NewSSEServer(s.server,
 		server.WithBaseURL(baseURL),
-		server.WithSSEContextFunc(func(ctx context.Context, r *http.Request) context.Context {
-			ctx = auth.AuthFromRequest(s.logger)(ctx, r)
-
-			return ctx
-		}),
+		server.WithSSEContextFunc(contextFunc),
 	)
 }
 
 // ServeSSEWithHealthChecks creates an SSE server with integrated health check endpoints
 func (s *MCPServer) ServeSSEWithHealthChecks(addr string) *EnhancedSSEServer {
 	sseServer := s.ServeSSE(addr)
+	securityMiddleware := middleware.NewSecurityMiddleware(s.logger)
 	
 	return &EnhancedSSEServer{
-		sseServer:     sseServer,
-		healthChecker: s.healthChecker,
-		logger:        s.logger,
+		sseServer:          sseServer,
+		healthChecker:      s.healthChecker,
+		logger:             s.logger,
+		securityMiddleware: securityMiddleware,
 	}
 }
 
 // EnhancedSSEServer wraps the MCP SSE server with health check functionality
 type EnhancedSSEServer struct {
-	sseServer     *server.SSEServer
-	healthChecker *HealthChecker
-	logger        *zap.Logger
+	sseServer        *server.SSEServer
+	healthChecker    *HealthChecker
+	logger           *zap.Logger
+	securityMiddleware *middleware.SecurityMiddleware
 }
 
 // Start starts the enhanced SSE server with health check endpoints
 func (e *EnhancedSSEServer) Start(addr string) error {
-	if e.healthChecker == nil {
-		// If health checks are disabled, just start the regular SSE server
-		return e.sseServer.Start(addr)
-	}
-
-	// Create a custom HTTP server with health check routes
+	// Create a custom HTTP server with health check routes and security middleware
 	mux := http.NewServeMux()
 	
-	// Add health check endpoints
-	mux.HandleFunc("/health", e.healthChecker.HealthHandler)
-	mux.HandleFunc("/health/ready", e.healthChecker.ReadinessHandler)
-	mux.HandleFunc("/health/live", e.healthChecker.LivenessHandler)
+	// Add health check endpoints if enabled
+	if e.healthChecker != nil {
+		mux.HandleFunc("/health", e.healthChecker.HealthHandler)
+		mux.HandleFunc("/health/ready", e.healthChecker.ReadinessHandler)
+		mux.HandleFunc("/health/live", e.healthChecker.LivenessHandler)
+		
+		e.logger.Info("Health check endpoints enabled",
+			zap.String("context", "console"),
+			zap.Strings("endpoints", []string{"/health", "/health/ready", "/health/live"}),
+		)
+	}
 	
-	// Add the SSE server handler for all other routes
+	// Add the SSE server handler for all other routes with error handling
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if this is a health check endpoint
-		if r.URL.Path == "/health" || r.URL.Path == "/health/ready" || r.URL.Path == "/health/live" {
+		if e.healthChecker != nil && (r.URL.Path == "/health" || r.URL.Path == "/health/ready" || r.URL.Path == "/health/live") {
 			// These are handled by the specific handlers above
 			return
 		}
+		
+		// Wrap the SSE server with error handling
+		defer func() {
+			if err := recover(); err != nil {
+				e.logger.Error("SSE server panic recovered",
+					zap.Any("error", err),
+					zap.String("path", r.URL.Path),
+					zap.String("method", r.Method),
+				)
+				e.writeStandardErrorResponse(w, r, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", 
+					"Internal server error", "An unexpected error occurred while processing the request")
+			}
+		}()
 		
 		// For all other requests, delegate to the SSE server
 		e.sseServer.ServeHTTP(w, r)
 	})
 
+	// Apply security middleware to the entire handler chain
+	var handler http.Handler = mux
+	if e.securityMiddleware != nil {
+		handler = e.securityMiddleware.Handler(handler)
+		e.logger.Info("Security middleware enabled",
+			zap.String("context", "console"),
+			zap.Bool("cors_enabled", true),
+			zap.Bool("rate_limiting_enabled", true),
+			zap.Bool("security_headers_enabled", true),
+		)
+	}
+
 	// Create HTTP server
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: handler,
+		// Add timeouts for better security and resource management
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
-
-	e.logger.Info("Health check endpoints enabled",
-		zap.String("context", "console"),
-		zap.Strings("endpoints", []string{"/health", "/health/ready", "/health/live"}),
-	)
 
 	return server.ListenAndServe()
 }
@@ -365,4 +435,66 @@ func (s *MCPServer) determineBaseURL(addr string) string {
 	}
 
 	return fmt.Sprintf("http://%s:%s", host, port)
+}
+
+// isExternalDeployment checks if the server is running in an external deployment environment
+func (s *MCPServer) isExternalDeployment() bool {
+	return os.Getenv("RAILWAY_ENVIRONMENT") != "" || 
+		   os.Getenv("SLACK_MCP_BASE_URL") != "" ||
+		   os.Getenv("RAILWAY_PUBLIC_DOMAIN") != ""
+}
+
+// isPrivateNetworkDeployment checks if the server is configured for private network deployment
+// where authentication middleware should be disabled
+func isPrivateNetworkDeployment() bool {
+	// Check if explicitly configured for private network deployment
+	if privateNetwork := os.Getenv("SLACK_MCP_PRIVATE_NETWORK"); privateNetwork != "" {
+		return privateNetwork == "true" || privateNetwork == "1"
+	}
+	
+	// Check if Railway deployment (which is considered private network for this context)
+	if os.Getenv("RAILWAY_ENVIRONMENT") != "" {
+		return true
+	}
+	
+	// Check if SSE API key is explicitly disabled (empty means no auth required)
+	if os.Getenv("SLACK_MCP_SSE_API_KEY") == "" {
+		return true
+	}
+	
+	return false
+}
+
+// ErrorResponse represents a standardized error response format
+type ErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Details string `json:"details"`
+	} `json:"error"`
+	Timestamp string `json:"timestamp"`
+	Path      string `json:"path"`
+}
+
+// writeStandardErrorResponse writes a standardized HTTP error response
+func (e *EnhancedSSEServer) writeStandardErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, errorCode, message, details string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	
+	errorResponse := ErrorResponse{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Path:      r.URL.Path,
+	}
+	errorResponse.Error.Code = errorCode
+	errorResponse.Error.Message = message
+	errorResponse.Error.Details = details
+
+	if err := json.NewEncoder(w).Encode(errorResponse); err != nil {
+		e.logger.Error("Failed to encode error response",
+			zap.Error(err),
+			zap.String("path", r.URL.Path),
+		)
+		// Fallback to plain text response
+		http.Error(w, message, statusCode)
+	}
 }

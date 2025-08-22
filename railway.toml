@@ -9,4 +9,4 @@ restartPolicyType = "ON_FAILURE"
 
 [[deploy.environmentVariables]]
 name = "SLACK_MCP_RATE_LIMIT"
-value = "60"
+value = "0"

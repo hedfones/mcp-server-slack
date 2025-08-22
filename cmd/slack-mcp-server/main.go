@@ -26,18 +26,18 @@ type ServerConfig struct {
 	Host    string
 	Port    string
 	BaseURL string
-	
+
 	// Railway-specific configuration
 	RailwayEnvironment string
 	RailwayPort        string
-	
+
 	// Security configuration
-	CORSOrigins       []string
-	RateLimit         time.Duration
-	SecurityHeaders   bool
-	HealthEnabled     bool
-	PrivateNetwork    bool
-	
+	CORSOrigins     []string
+	RateLimit       time.Duration
+	SecurityHeaders bool
+	HealthEnabled   bool
+	PrivateNetwork  bool
+
 	// Logging configuration
 	LogLevel  string
 	LogFormat string
@@ -47,26 +47,26 @@ type ServerConfig struct {
 // loadServerConfig loads and validates server configuration from environment variables
 func loadServerConfig() (*ServerConfig, error) {
 	config := &ServerConfig{}
-	
+
 	// Railway-specific environment variables (automatically set by Railway)
 	config.RailwayPort = os.Getenv("PORT")
 	config.RailwayEnvironment = os.Getenv("RAILWAY_ENVIRONMENT")
-	
+
 	// Network configuration
 	config.Host = os.Getenv("SLACK_MCP_HOST")
 	config.Port = os.Getenv("SLACK_MCP_PORT")
 	config.BaseURL = os.Getenv("SLACK_MCP_BASE_URL")
-	
+
 	// Apply Railway port precedence
 	if config.RailwayPort != "" {
 		config.Port = config.RailwayPort
 	}
-	
+
 	// Set default port if none specified
 	if config.Port == "" {
 		config.Port = strconv.Itoa(defaultSsePort)
 	}
-	
+
 	// Handle dual-stack binding for Railway deployment
 	if config.Host == "" {
 		if config.RailwayPort != "" || config.RailwayEnvironment != "" {
@@ -77,7 +77,7 @@ func loadServerConfig() (*ServerConfig, error) {
 			config.Host = defaultSseHost
 		}
 	}
-	
+
 	// Security configuration with validation
 	corsOriginsStr := os.Getenv("SLACK_MCP_CORS_ORIGINS")
 	if corsOriginsStr == "" {
@@ -88,38 +88,44 @@ func loadServerConfig() (*ServerConfig, error) {
 			config.CORSOrigins[i] = strings.TrimSpace(origin)
 		}
 	}
-	
+
 	// Rate limiting configuration
 	rateLimitStr := os.Getenv("SLACK_MCP_RATE_LIMIT")
 	if rateLimitStr == "" {
 		config.RateLimit = time.Minute // Default: 60 requests per minute
 	} else {
 		rateLimitInt, err := strconv.Atoi(rateLimitStr)
-		if err != nil || rateLimitInt <= 0 {
-			return nil, fmt.Errorf("invalid SLACK_MCP_RATE_LIMIT value '%s': must be a positive integer", rateLimitStr)
+		if err != nil || rateLimitInt < 0 {
+			return nil, fmt.Errorf("invalid SLACK_MCP_RATE_LIMIT value '%s': must be a non-negative integer", rateLimitStr)
 		}
-		config.RateLimit = time.Minute / time.Duration(rateLimitInt)
+
+		// Handle special case: 0 means no rate limiting
+		if rateLimitInt == 0 {
+			config.RateLimit = 0 // Disabled
+		} else {
+			config.RateLimit = time.Minute / time.Duration(rateLimitInt)
+		}
 	}
-	
+
 	// Security headers configuration
 	securityHeadersStr := os.Getenv("SLACK_MCP_SECURITY_HEADERS")
 	config.SecurityHeaders = securityHeadersStr == "" || securityHeadersStr == "true" || securityHeadersStr == "1"
-	
+
 	// Health check configuration
 	healthEnabledStr := os.Getenv("SLACK_MCP_HEALTH_ENABLED")
 	config.HealthEnabled = healthEnabledStr == "" || healthEnabledStr == "true" || healthEnabledStr == "1"
-	
+
 	// Private network deployment detection
 	privateNetworkStr := os.Getenv("SLACK_MCP_PRIVATE_NETWORK")
-	config.PrivateNetwork = privateNetworkStr == "true" || privateNetworkStr == "1" || 
+	config.PrivateNetwork = privateNetworkStr == "true" || privateNetworkStr == "1" ||
 		config.RailwayEnvironment != "" || os.Getenv("SLACK_MCP_SSE_API_KEY") == ""
-	
+
 	// Logging configuration
 	config.LogLevel = os.Getenv("SLACK_MCP_LOG_LEVEL")
 	config.LogFormat = os.Getenv("SLACK_MCP_LOG_FORMAT")
 	logColorStr := os.Getenv("SLACK_MCP_LOG_COLOR")
 	config.LogColor = logColorStr == "true" || logColorStr == "1"
-	
+
 	return config, nil
 }
 
@@ -129,19 +135,19 @@ func validateServerConfig(config *ServerConfig) error {
 	if _, err := strconv.Atoi(config.Port); err != nil {
 		return fmt.Errorf("invalid port '%s': must be a valid integer", config.Port)
 	}
-	
+
 	// Validate CORS origins
 	for _, origin := range config.CORSOrigins {
 		if origin == "" {
 			return fmt.Errorf("invalid CORS origin: empty origin not allowed")
 		}
 	}
-	
-	// Validate rate limit
-	if config.RateLimit <= 0 {
-		return fmt.Errorf("invalid rate limit: must be positive")
+
+	// Validate rate limit (0 means disabled, which is allowed)
+	if config.RateLimit < 0 {
+		return fmt.Errorf("invalid rate limit: must be non-negative")
 	}
-	
+
 	return nil
 }
 
@@ -157,7 +163,7 @@ func main() {
 		fmt.Printf("Configuration error: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	err = validateServerConfig(config)
 	if err != nil {
 		fmt.Printf("Configuration validation error: %v\n", err)
@@ -219,7 +225,7 @@ func main() {
 		}
 
 		sseServer := s.ServeSSEWithHealthChecks(bindAddr)
-		
+
 		// Log appropriate address information with enhanced IPv6 support
 		if config.Host == "" {
 			logger.Info("SSE server starting with dual-stack IPv4/IPv6 binding",
@@ -235,7 +241,7 @@ func main() {
 			if strings.Contains(config.Host, ":") && !strings.HasPrefix(config.Host, "[") {
 				displayHost = "[" + config.Host + "]"
 			}
-			
+
 			logger.Info("SSE server starting with specific host binding",
 				zap.String("context", "console"),
 				zap.String("host", displayHost),

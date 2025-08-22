@@ -31,14 +31,14 @@
   - Add health check middleware and error handling
   - _Requirements: 5.1, 5.3, 5.5_
 
-- [ ] 4. Create security and CORS middleware
-- [ ] 4.1 Implement CORS and security middleware
+- [x] 4. Create security and CORS middleware
+- [x] 4.1 Implement CORS and security middleware
   - Create pkg/server/middleware/security.go with CORS support
   - Add configurable CORS origins via SLACK_MCP_CORS_ORIGINS environment variable
   - Implement basic security headers for private network deployment
   - _Requirements: 4.1, 4.3_
 
-- [ ] 4.2 Implement rate limiting functionality
+- [x] 4.2 Implement rate limiting functionality
   - Add per-IP rate limiting using golang.org/x/time/rate package
   - Create configurable rate limits via SLACK_MCP_RATE_LIMIT environment variable
   - Implement rate limit exceeded error responses with proper HTTP status codes

@@ -22,16 +22,16 @@ import (
 )
 
 type MCPServer struct {
-	server       *server.MCPServer
-	logger       *zap.Logger
-	provider     *provider.ApiProvider
+	server        *server.MCPServer
+	logger        *zap.Logger
+	provider      *provider.ApiProvider
 	healthChecker *HealthChecker
 }
 
 func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger) *MCPServer {
 	// Create base server with logging and recovery
 	var s *server.MCPServer
-	
+
 	// Only add authentication middleware if not in private network deployment mode
 	if !isPrivateNetworkDeployment() {
 		s = server.NewMCPServer(
@@ -251,13 +251,13 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 
 	// Determine base URL for Railway deployment or local development
 	baseURL := s.determineBaseURL(addr)
-	
+
 	s.logger.Info("SSE server configured for remote deployment",
 		zap.String("context", "console"),
 		zap.String("base_url", baseURL),
 		zap.Bool("external_deployment", s.isExternalDeployment()),
 	)
-	
+
 	// Configure SSE context function based on deployment type
 	var contextFunc func(context.Context, *http.Request) context.Context
 	if !isPrivateNetworkDeployment() {
@@ -272,7 +272,7 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 			return ctx
 		}
 	}
-	
+
 	return server.NewSSEServer(s.server,
 		server.WithBaseURL(baseURL),
 		server.WithSSEContextFunc(contextFunc),
@@ -283,7 +283,7 @@ func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
 func (s *MCPServer) ServeSSEWithHealthChecks(addr string) *EnhancedSSEServer {
 	sseServer := s.ServeSSE(addr)
 	securityMiddleware := middleware.NewSecurityMiddleware(s.logger)
-	
+
 	return &EnhancedSSEServer{
 		sseServer:          sseServer,
 		healthChecker:      s.healthChecker,
@@ -294,9 +294,9 @@ func (s *MCPServer) ServeSSEWithHealthChecks(addr string) *EnhancedSSEServer {
 
 // EnhancedSSEServer wraps the MCP SSE server with health check functionality
 type EnhancedSSEServer struct {
-	sseServer        *server.SSEServer
-	healthChecker    *HealthChecker
-	logger           *zap.Logger
+	sseServer          *server.SSEServer
+	healthChecker      *HealthChecker
+	logger             *zap.Logger
 	securityMiddleware *middleware.SecurityMiddleware
 }
 
@@ -312,7 +312,7 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 		)
 		return fmt.Errorf("invalid bind address %s: %w", addr, err)
 	}
-	
+
 	// Log network binding details with IPv6 formatting
 	if host == "" {
 		e.logger.Info("Starting server with dual-stack IPv4/IPv6 binding",
@@ -326,7 +326,7 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 		if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
 			formattedHost = "[" + host + "]"
 		}
-		
+
 		e.logger.Info("Starting server with specific host binding",
 			zap.String("context", "console"),
 			zap.String("bind_address", addr),
@@ -339,19 +339,19 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 
 	// Create a custom HTTP server with health check routes and security middleware
 	mux := http.NewServeMux()
-	
+
 	// Add health check endpoints if enabled
 	if e.healthChecker != nil {
 		mux.HandleFunc("/health", e.healthChecker.HealthHandler)
 		mux.HandleFunc("/health/ready", e.healthChecker.ReadinessHandler)
 		mux.HandleFunc("/health/live", e.healthChecker.LivenessHandler)
-		
+
 		e.logger.Info("Health check endpoints enabled",
 			zap.String("context", "console"),
 			zap.Strings("endpoints", []string{"/health", "/health/ready", "/health/live"}),
 		)
 	}
-	
+
 	// Add the SSE server handler for all other routes with error handling
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if this is a health check endpoint
@@ -359,7 +359,7 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 			// These are handled by the specific handlers above
 			return
 		}
-		
+
 		// Wrap the SSE server with error handling
 		defer func() {
 			if err := recover(); err != nil {
@@ -368,11 +368,11 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 					zap.String("path", r.URL.Path),
 					zap.String("method", r.Method),
 				)
-				e.writeStandardErrorResponse(w, r, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", 
+				e.writeStandardErrorResponse(w, r, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR",
 					"Internal server error", "An unexpected error occurred while processing the request")
 			}
 		}()
-		
+
 		// For all other requests, delegate to the SSE server
 		e.sseServer.ServeHTTP(w, r)
 	})
@@ -428,7 +428,7 @@ func (e *EnhancedSSEServer) Start(addr string) error {
 			)
 		}
 	}
-	
+
 	return err
 }
 
@@ -505,9 +505,9 @@ func (s *MCPServer) determineBaseURL(addr string) string {
 
 // isExternalDeployment checks if the server is running in an external deployment environment
 func (s *MCPServer) isExternalDeployment() bool {
-	return os.Getenv("RAILWAY_ENVIRONMENT") != "" || 
-		   os.Getenv("SLACK_MCP_BASE_URL") != "" ||
-		   os.Getenv("RAILWAY_PUBLIC_DOMAIN") != ""
+	return os.Getenv("RAILWAY_ENVIRONMENT") != "" ||
+		os.Getenv("SLACK_MCP_BASE_URL") != "" ||
+		os.Getenv("RAILWAY_PUBLIC_DOMAIN") != ""
 }
 
 // isPrivateNetworkDeployment checks if the server is configured for private network deployment
@@ -517,17 +517,17 @@ func isPrivateNetworkDeployment() bool {
 	if privateNetwork := os.Getenv("SLACK_MCP_PRIVATE_NETWORK"); privateNetwork != "" {
 		return privateNetwork == "true" || privateNetwork == "1"
 	}
-	
+
 	// Check if Railway deployment (which is considered private network for this context)
 	if os.Getenv("RAILWAY_ENVIRONMENT") != "" {
 		return true
 	}
-	
+
 	// Check if SSE API key is explicitly disabled (empty means no auth required)
 	if os.Getenv("SLACK_MCP_SSE_API_KEY") == "" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -546,7 +546,7 @@ type ErrorResponse struct {
 func (e *EnhancedSSEServer) writeStandardErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, errorCode, message, details string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	errorResponse := ErrorResponse{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Path:      r.URL.Path,

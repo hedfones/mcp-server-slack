@@ -149,7 +149,7 @@ func (h *HealthChecker) checkSlackAPI(ctx context.Context) CheckStatus {
 	}
 
 	// Skip Slack API check in demo mode
-	if os.Getenv("SLACK_MCP_XOXP_TOKEN") == "demo" || 
+	if os.Getenv("SLACK_MCP_XOXP_TOKEN") == "demo" ||
 		(os.Getenv("SLACK_MCP_XOXC_TOKEN") == "demo" && os.Getenv("SLACK_MCP_XOXD_TOKEN") == "demo") {
 		return CheckStatusOK
 	}
@@ -169,7 +169,7 @@ func (h *HealthChecker) checkSlackAPI(ctx context.Context) CheckStatus {
 // writeHealthResponse writes the health response as JSON
 func (h *HealthChecker) writeHealthResponse(w http.ResponseWriter, response *HealthResponse) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	// Set appropriate HTTP status code
 	if response.Status == HealthStatusUnhealthy {
 		w.WriteHeader(http.StatusServiceUnavailable)

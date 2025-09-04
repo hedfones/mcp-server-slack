@@ -10,36 +10,36 @@ import (
 
 func TestRailwayPortDetection(t *testing.T) {
 	tests := []struct {
-		name           string
-		portEnv        string
-		slackMcpPort   string
-		railwayEnv     string
-		expectedPort   string
-		description    string
+		name         string
+		portEnv      string
+		slackMcpPort string
+		railwayEnv   string
+		expectedPort string
+		description  string
 	}{
 		{
-			name:           "railway port takes precedence",
-			portEnv:        "3000",
-			slackMcpPort:   "8080",
-			railwayEnv:     "production",
-			expectedPort:   "3000",
-			description:    "Railway PORT should take precedence over SLACK_MCP_PORT",
+			name:         "railway port takes precedence",
+			portEnv:      "3000",
+			slackMcpPort: "8080",
+			railwayEnv:   "production",
+			expectedPort: "3000",
+			description:  "Railway PORT should take precedence over SLACK_MCP_PORT",
 		},
 		{
-			name:           "fallback to slack mcp port",
-			portEnv:        "",
-			slackMcpPort:   "8080",
-			railwayEnv:     "",
-			expectedPort:   "8080",
-			description:    "Should fallback to SLACK_MCP_PORT when PORT is not set",
+			name:         "fallback to slack mcp port",
+			portEnv:      "",
+			slackMcpPort: "8080",
+			railwayEnv:   "",
+			expectedPort: "8080",
+			description:  "Should fallback to SLACK_MCP_PORT when PORT is not set",
 		},
 		{
-			name:           "fallback to default",
-			portEnv:        "",
-			slackMcpPort:   "",
-			railwayEnv:     "",
-			expectedPort:   "13080",
-			description:    "Should use default port when neither PORT nor SLACK_MCP_PORT is set",
+			name:         "fallback to default",
+			portEnv:      "",
+			slackMcpPort: "",
+			railwayEnv:   "",
+			expectedPort: "13080",
+			description:  "Should use default port when neither PORT nor SLACK_MCP_PORT is set",
 		},
 	}
 
@@ -86,44 +86,44 @@ func TestRailwayPortDetection(t *testing.T) {
 
 func TestRailwayHostDetection(t *testing.T) {
 	tests := []struct {
-		name           string
-		hostEnv        string
-		portEnv        string
-		railwayEnv     string
-		expectedHost   string
-		description    string
+		name         string
+		hostEnv      string
+		portEnv      string
+		railwayEnv   string
+		expectedHost string
+		description  string
 	}{
 		{
-			name:           "empty host for railway deployment",
-			hostEnv:        "",
-			portEnv:        "3000",
-			railwayEnv:     "production",
-			expectedHost:   "",
-			description:    "Should use empty host for dual-stack binding on Railway",
+			name:         "empty host for railway deployment",
+			hostEnv:      "",
+			portEnv:      "3000",
+			railwayEnv:   "production",
+			expectedHost: "",
+			description:  "Should use empty host for dual-stack binding on Railway",
 		},
 		{
-			name:           "empty host when PORT is set",
-			hostEnv:        "",
-			portEnv:        "3000",
-			railwayEnv:     "",
-			expectedHost:   "",
-			description:    "Should use empty host when Railway PORT is set",
+			name:         "empty host when PORT is set",
+			hostEnv:      "",
+			portEnv:      "3000",
+			railwayEnv:   "",
+			expectedHost: "",
+			description:  "Should use empty host when Railway PORT is set",
 		},
 		{
-			name:           "explicit host overrides railway detection",
-			hostEnv:        "192.168.1.100",
-			portEnv:        "3000",
-			railwayEnv:     "production",
-			expectedHost:   "192.168.1.100",
-			description:    "Explicit SLACK_MCP_HOST should override Railway detection",
+			name:         "explicit host overrides railway detection",
+			hostEnv:      "192.168.1.100",
+			portEnv:      "3000",
+			railwayEnv:   "production",
+			expectedHost: "192.168.1.100",
+			description:  "Explicit SLACK_MCP_HOST should override Railway detection",
 		},
 		{
-			name:           "default host for local development",
-			hostEnv:        "",
-			portEnv:        "",
-			railwayEnv:     "",
-			expectedHost:   "127.0.0.1",
-			description:    "Should use default host for local development",
+			name:         "default host for local development",
+			hostEnv:      "",
+			portEnv:      "",
+			railwayEnv:   "",
+			expectedHost: "127.0.0.1",
+			description:  "Should use default host for local development",
 		},
 	}
 
@@ -178,8 +178,8 @@ func TestLoadServerConfig(t *testing.T) {
 		validate    func(*testing.T, *ServerConfig)
 	}{
 		{
-			name: "default configuration",
-			envVars: map[string]string{},
+			name:        "default configuration",
+			envVars:     map[string]string{},
 			expectError: false,
 			validate: func(t *testing.T, config *ServerConfig) {
 				if config.Port != "13080" {
@@ -199,7 +199,7 @@ func TestLoadServerConfig(t *testing.T) {
 		{
 			name: "railway configuration",
 			envVars: map[string]string{
-				"PORT": "3000",
+				"PORT":                "3000",
 				"RAILWAY_ENVIRONMENT": "production",
 			},
 			expectError: false,
@@ -280,7 +280,7 @@ func TestLoadServerConfig(t *testing.T) {
 			}()
 
 			config, err := loadServerConfig()
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error but got none")
@@ -350,7 +350,7 @@ func TestValidateServerConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateServerConfig(tt.config)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error but got none")
@@ -396,7 +396,7 @@ func TestDualStackBinding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			port := "8080"
 			var bindAddr string
-			
+
 			if tt.host == "" {
 				bindAddr = ":" + port // Dual-stack binding
 			} else {
@@ -412,34 +412,34 @@ func TestDualStackBinding(t *testing.T) {
 
 func TestIPv6AddressFormatting(t *testing.T) {
 	tests := []struct {
-		name         string
-		host         string
-		expectedLog  string
-		description  string
+		name        string
+		host        string
+		expectedLog string
+		description string
 	}{
 		{
-			name:         "ipv4 address",
-			host:         "127.0.0.1",
-			expectedLog:  "127.0.0.1",
-			description:  "IPv4 addresses should not be modified",
+			name:        "ipv4 address",
+			host:        "127.0.0.1",
+			expectedLog: "127.0.0.1",
+			description: "IPv4 addresses should not be modified",
 		},
 		{
-			name:         "ipv6 address without brackets",
-			host:         "::1",
-			expectedLog:  "[::1]",
-			description:  "IPv6 addresses should be wrapped in brackets for logging",
+			name:        "ipv6 address without brackets",
+			host:        "::1",
+			expectedLog: "[::1]",
+			description: "IPv6 addresses should be wrapped in brackets for logging",
 		},
 		{
-			name:         "ipv6 address with brackets",
-			host:         "[::1]",
-			expectedLog:  "[::1]",
-			description:  "IPv6 addresses with brackets should remain unchanged",
+			name:        "ipv6 address with brackets",
+			host:        "[::1]",
+			expectedLog: "[::1]",
+			description: "IPv6 addresses with brackets should remain unchanged",
 		},
 		{
-			name:         "hostname",
-			host:         "localhost",
-			expectedLog:  "localhost",
-			description:  "Hostnames should not be modified",
+			name:        "hostname",
+			host:        "localhost",
+			expectedLog: "localhost",
+			description: "Hostnames should not be modified",
 		},
 	}
 
@@ -486,7 +486,7 @@ func TestNetworkBindingFallback(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			listener, err := net.Listen(tt.network, tt.address)
-			
+
 			if tt.shouldWork {
 				if err != nil {
 					t.Errorf("%s: expected binding to work, got error: %v", tt.description, err)

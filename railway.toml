@@ -7,6 +7,5 @@ healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 
-[[deploy.environmentVariables]]
-name = "SLACK_MCP_RATE_LIMIT"
-value = "1000"
+limitOverride.containers.cpu = 4
+limitOverride.containers.memoryBytes = 4000000000

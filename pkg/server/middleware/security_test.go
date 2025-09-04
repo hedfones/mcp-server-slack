@@ -76,7 +76,7 @@ func TestSecurityMiddleware_CORS(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	if w.Header().Get("Access-Control-Allow-Origin") != "https://example.com" {
-		t.Errorf("Expected CORS origin to be set to https://example.com, got %s", 
+		t.Errorf("Expected CORS origin to be set to https://example.com, got %s",
 			w.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
@@ -103,7 +103,7 @@ func TestSecurityMiddleware_SecurityHeaders(t *testing.T) {
 
 	for header, expectedValue := range expectedHeaders {
 		if w.Header().Get(header) != expectedValue {
-			t.Errorf("Expected %s header to be %s, got %s", 
+			t.Errorf("Expected %s header to be %s, got %s",
 				header, expectedValue, w.Header().Get(header))
 		}
 	}
@@ -128,11 +128,11 @@ func TestSecurityMiddleware_PreflightRequest(t *testing.T) {
 
 func TestGetClientIP(t *testing.T) {
 	tests := []struct {
-		name           string
-		remoteAddr     string
-		xForwardedFor  string
-		xRealIP        string
-		expectedIP     string
+		name          string
+		remoteAddr    string
+		xForwardedFor string
+		xRealIP       string
+		expectedIP    string
 	}{
 		{
 			name:       "RemoteAddr only",
@@ -162,7 +162,7 @@ func TestGetClientIP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/test", nil)
 			req.RemoteAddr = tt.remoteAddr
-			
+
 			if tt.xForwardedFor != "" {
 				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
 			}
@@ -183,10 +183,10 @@ func TestSecurityMiddleware_RateLimitDisabled(t *testing.T) {
 	logger := zap.NewNop()
 	middleware := &SecurityMiddleware{
 		config: SecurityConfig{
-			CORSOrigins:          []string{},
+			CORSOrigins:           []string{},
 			EnableSecurityHeaders: true,
-			RateLimit:            0, // Disabled
-			Logger:               logger,
+			RateLimit:             0, // Disabled
+			Logger:                logger,
 		},
 		rateLimiters: make(map[string]*rate.Limiter),
 	}
@@ -222,7 +222,7 @@ func TestSecurityMiddleware_RateLimitDifferentIPs(t *testing.T) {
 
 	// Test that different IPs have separate rate limiters
 	ips := []string{"192.168.1.1:12345", "192.168.1.2:12345", "192.168.1.3:12345"}
-	
+
 	for _, ip := range ips {
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.RemoteAddr = ip
@@ -298,7 +298,7 @@ func TestSecurityMiddleware_CORSAllowAll(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Errorf("Expected CORS origin to be *, got %s", 
+		t.Errorf("Expected CORS origin to be *, got %s",
 			w.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
@@ -321,7 +321,7 @@ func TestSecurityMiddleware_CORSWildcard(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	if w.Header().Get("Access-Control-Allow-Origin") != "https://any-origin.com" {
-		t.Errorf("Expected CORS origin to be https://any-origin.com, got %s", 
+		t.Errorf("Expected CORS origin to be https://any-origin.com, got %s",
 			w.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
@@ -371,7 +371,7 @@ func TestSecurityMiddleware_CORSHeaders(t *testing.T) {
 
 	for header, expectedValue := range expectedHeaders {
 		if w.Header().Get(header) != expectedValue {
-			t.Errorf("Expected %s header to be %s, got %s", 
+			t.Errorf("Expected %s header to be %s, got %s",
 				header, expectedValue, w.Header().Get(header))
 		}
 	}
@@ -396,7 +396,7 @@ func TestSecurityMiddleware_SecurityHeadersDisabled(t *testing.T) {
 	// Security headers should not be set
 	securityHeaders := []string{
 		"X-Content-Type-Options",
-		"X-Frame-Options", 
+		"X-Frame-Options",
 		"X-XSS-Protection",
 		"Referrer-Policy",
 		"Content-Security-Policy",
@@ -404,7 +404,7 @@ func TestSecurityMiddleware_SecurityHeadersDisabled(t *testing.T) {
 
 	for _, header := range securityHeaders {
 		if w.Header().Get(header) != "" {
-			t.Errorf("Security header %s should not be set when disabled, got %s", 
+			t.Errorf("Security header %s should not be set when disabled, got %s",
 				header, w.Header().Get(header))
 		}
 	}
@@ -424,7 +424,7 @@ func TestSecurityMiddleware_ContentSecurityPolicy(t *testing.T) {
 
 	csp := w.Header().Get("Content-Security-Policy")
 	expectedCSP := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
-	
+
 	if csp != expectedCSP {
 		t.Errorf("Expected CSP %s, got %s", expectedCSP, csp)
 	}
@@ -563,7 +563,7 @@ func TestParseCORSOrigins(t *testing.T) {
 			defer os.Unsetenv("SLACK_MCP_CORS_ORIGINS")
 
 			result := parseCORSOrigins()
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("Expected %d origins, got %d", len(tt.expected), len(result))
 				return
@@ -704,7 +704,7 @@ func TestSecurityMiddleware_IntegrationTest(t *testing.T) {
 	req.Header.Set("Origin", "https://allowed.com")
 	req.RemoteAddr = "203.0.113.1:12345"
 	w := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(w, req)
 
 	// Verify response
